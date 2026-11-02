@@ -1,9 +1,11 @@
 import html
 import hmac
 import json
+import smtplib
 import threading
 import uuid
 from datetime import date, timedelta
+from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import quote
 
@@ -289,6 +291,30 @@ def mailto_for(record: dict) -> str:
     subject, body = confirmation_copy(record)
     email = str(record.get("email") or "").strip()
     return f"mailto:{email}?subject={quote(subject, safe='')}&body={quote(body, safe='')}"
+
+
+def send_confirmation_email(record: dict) -> None:
+    """Email the customer a confirmation. Raises if Gmail or the address fails."""
+    recipient = str(record.get("email") or "").strip()
+    if not recipient:
+        raise ValueError("This booking has no email address.")
+    gmail = st.secrets["gmail"]
+    account = str(gmail["email"]).strip()
+    password = str(gmail["app_password"]).replace(" ", "").strip()
+    if not account or not password:
+        raise ValueError("Gmail is not configured.")
+    subject, body = confirmation_copy(record)
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = CONTACT_EMAIL
+    message["To"] = recipient
+    message.set_content(body)
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as smtp:
+        smtp.ehlo()
+        smtp.starttls()
+        smtp.ehlo()
+        smtp.login(account, password)
+        smtp.send_message(message)
 
 
 def render_acceptance(record: dict) -> None:
@@ -1009,6 +1035,7 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
         st.session_state.admin = False
         st.session_state.accept_notice = None
         st.session_state.accept_error = None
+        st.session_state.accept_email_status = None
         st.rerun()
 
     if store_error:
@@ -1019,6 +1046,19 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
     accept_error = st.session_state.get("accept_error")
     if isinstance(notice, dict):
         render_acceptance(notice)
+        if st.session_state.get("accept_email_status") == "sent":
+            sent_to = str(notice.get("email") or "").strip()
+            render_message(
+                "success",
+                f"Confirmation email sent to {sent_to}."
+                if sent_to
+                else "Confirmation email sent.",
+            )
+        elif st.session_state.get("accept_email_status") == "failed":
+            render_message(
+                "error",
+                "The booking was accepted, but the confirmation email could not be sent.",
+            )
     if accept_error:
         render_message("error", str(accept_error))
 
@@ -1048,8 +1088,14 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
             continue
         if st.button("Accept", type="primary", key=f"accept-{booking_id}"):
             try:
-                st.session_state.accept_notice = accept_booking(booking_id)
+                accepted = accept_booking(booking_id)
+                st.session_state.accept_notice = accepted
                 st.session_state.accept_error = None
+                try:
+                    send_confirmation_email(accepted)
+                    st.session_state.accept_email_status = "sent"
+                except Exception:
+                    st.session_state.accept_email_status = "failed"
             except SlotTaken:
                 st.session_state.accept_error = (
                     "That time is already accepted for another booking."
@@ -1070,6 +1116,7 @@ def main() -> None:
     st.session_state.setdefault("form_gen", 0)
     st.session_state.setdefault("accept_notice", None)
     st.session_state.setdefault("accept_error", None)
+    st.session_state.setdefault("accept_email_status", None)
 
     today = date.today()
     try:

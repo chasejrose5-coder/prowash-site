@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "name": "chase",
+    "phone": "9259156541",
+    "email": "chasejrose5@gmail.com",
+    "address": "1463 paseo nogales rd",
+    "service": "Car Detailing",
+    "date": "2026-11-04",
+    "time": "10:00 AM",
+    "notes": "",
+    "id": "2af5b27e6847483096b5397f1776f757",
+    "status": "accepted"
+  }
+]
