@@ -2,8 +2,10 @@ import html
 import hmac
 import json
 import threading
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import streamlit as st
 
@@ -97,28 +99,81 @@ def _write_bookings(bookings: list[dict]) -> None:
     temporary.replace(DATA_PATH)
 
 
+def booking_status(record: dict) -> str:
+    status = str(record.get("status") or "").strip().lower()
+    if status == "accepted":
+        return "accepted"
+    return "pending"
+
+
+def _stamp_records(bookings: list[dict]) -> bool:
+    changed = False
+    for item in bookings:
+        if not str(item.get("id") or "").strip():
+            item["id"] = uuid.uuid4().hex
+            changed = True
+        if not str(item.get("status") or "").strip():
+            item["status"] = "pending"
+            changed = True
+    return changed
+
+
 def load_bookings() -> list[dict]:
     with _LOCK:
-        return _read_bookings()
+        bookings = _read_bookings()
+        if _stamp_records(bookings):
+            _write_bookings(bookings)
+        return bookings
+
+
+def _accepted_conflict(
+    bookings: list[dict],
+    iso_date: str,
+    slot: str,
+    skip: dict | None = None,
+) -> bool:
+    return any(
+        item is not skip
+        and item.get("date") == iso_date
+        and item.get("time") == slot
+        and booking_status(item) == "accepted"
+        for item in bookings
+    )
 
 
 def add_booking(record: dict) -> None:
     with _LOCK:
         bookings = _read_bookings()
-        if any(
-            item.get("date") == record["date"] and item.get("time") == record["time"]
-            for item in bookings
-        ):
+        if _accepted_conflict(bookings, record["date"], record["time"]):
             raise SlotTaken()
+        record["id"] = uuid.uuid4().hex
+        record["status"] = "pending"
         bookings.append(record)
         _write_bookings(bookings)
 
 
+def accept_booking(booking_id: str) -> dict:
+    with _LOCK:
+        bookings = _read_bookings()
+        target = next((item for item in bookings if item.get("id") == booking_id), None)
+        if target is None:
+            raise BookingStoreError("That booking could not be saved.")
+        if booking_status(target) != "accepted":
+            if _accepted_conflict(
+                bookings,
+                str(target.get("date") or ""),
+                str(target.get("time") or ""),
+                skip=target,
+            ):
+                raise SlotTaken()
+            target["status"] = "accepted"
+            _write_bookings(bookings)
+        return dict(target)
+
+
 def slot_taken(bookings: list[dict], day: date, slot: str) -> bool:
     iso_date = day.isoformat()
-    return any(
-        item.get("date") == iso_date and item.get("time") == slot for item in bookings
-    )
+    return _accepted_conflict(bookings, iso_date, slot)
 
 
 def booking_sort_key(record: dict) -> tuple:
@@ -166,27 +221,99 @@ def calendar_markup(today: date, bookings: list[dict]) -> str:
     return f'<div class="calendar">{"".join(days)}</div>'
 
 
-def appointments_markup(bookings: list[dict]) -> str:
-    cards = []
-    for record in sorted(bookings, key=booking_sort_key):
-        raw_date = str(record.get("date") or "")
-        date_label = format_long_date(raw_date) if raw_date else "—"
-        rows = [
-            ("Name", display_value(record.get("name"))),
-            ("Phone", display_value(record.get("phone"))),
-            ("Email", display_value(record.get("email"))),
-            ("Address", display_value(record.get("address"))),
-            ("Service", display_value(record.get("service"))),
-            ("Date", esc(date_label) if date_label != "—" else "—"),
-            ("Time", display_value(record.get("time"))),
-            ("Notes", display_value(record.get("notes"))),
+def detail_rows(record: dict) -> list[tuple[str, str]]:
+    raw_date = str(record.get("date") or "")
+    date_label = format_long_date(raw_date) if raw_date else "—"
+    return [
+        ("Name", display_value(record.get("name"))),
+        ("Phone", display_value(record.get("phone"))),
+        ("Email", display_value(record.get("email"))),
+        ("Address", display_value(record.get("address"))),
+        ("Service", display_value(record.get("service"))),
+        ("Date", esc(date_label) if date_label != "—" else "—"),
+        ("Time", display_value(record.get("time"))),
+        ("Notes", display_value(record.get("notes"))),
+    ]
+
+
+def rows_markup(rows: list[tuple[str, str]]) -> str:
+    return "".join(
+        f'<div class="contact-row"><dt>{label}</dt><dd>{value}</dd></div>'
+        for label, value in rows
+    )
+
+
+def booking_card(record: dict) -> str:
+    status = booking_status(record)
+    label = "Accepted" if status == "accepted" else "Pending"
+    return (
+        '<article class="booking">'
+        f'<p class="booking-status is-{status}">{label}</p>'
+        f"<dl>{rows_markup(detail_rows(record))}</dl>"
+        "</article>"
+    )
+
+
+def confirmation_copy(record: dict) -> tuple[str, str]:
+    name = str(record.get("name") or "").strip() or "there"
+    service = str(record.get("service") or "").strip() or "appointment"
+    when_date = format_long_date(str(record.get("date") or ""))
+    when_time = str(record.get("time") or "").strip()
+    address = str(record.get("address") or "").strip()
+    notes = str(record.get("notes") or "").strip()
+    subject = f"Your {service} appointment is confirmed"
+    lines = [
+        f"Hi {name},",
+        "",
+        f"Your {service} appointment with ProWash & Detail Co. is confirmed.",
+        "",
+        f"Date: {when_date}",
+        f"Time: {when_time}",
+        f"Address: {address}",
+    ]
+    if notes:
+        lines.extend(["", f"Notes: {notes}"])
+    lines.extend(
+        [
+            "",
+            "If you need to change anything, reply to this email or call (925) 915-6541.",
+            "",
+            "ProWash & Detail Co.",
+            CONTACT_EMAIL,
         ]
-        body = "".join(
-            f'<div class="contact-row"><dt>{label}</dt><dd>{value}</dd></div>'
-            for label, value in rows
-        )
-        cards.append(f'<article class="booking"><dl>{body}</dl></article>')
-    return f'<div class="booking-list">{"".join(cards)}</div>'
+    )
+    return subject, "\n".join(lines)
+
+
+def mailto_for(record: dict) -> str:
+    subject, body = confirmation_copy(record)
+    email = str(record.get("email") or "").strip()
+    return f"mailto:{email}?subject={quote(subject, safe='')}&body={quote(body, safe='')}"
+
+
+def render_acceptance(record: dict) -> None:
+    name = str(record.get("name") or "").strip() or "This customer"
+    service = str(record.get("service") or "").strip() or "the requested service"
+    when_date = format_long_date(str(record.get("date") or ""))
+    when_time = str(record.get("time") or "").strip()
+    email = str(record.get("email") or "").strip()
+    subject, body = confirmation_copy(record)
+    # One HTML line, so Markdown does not split the message on blank lines.
+    body_html = esc(body).replace("\r\n", "&#10;").replace("\n", "&#10;")
+    render_message(
+        "success",
+        f"Accepted. {name} is booked for {service} on {when_date} at {when_time}.",
+    )
+    st.markdown(
+        f'<dl class="confirm-details">{rows_markup(detail_rows(record))}</dl>'
+        '<p class="confirm-label">Email to send</p>'
+        f'<p class="confirm-note">Addressed to {esc(email)}. '
+        "Select the message to copy it, or open it in your mail app.</p>"
+        f'<p class="email-subject"><span>Subject</span>{esc(subject)}</p>'
+        f'<textarea class="email-copy" readonly>{body_html}</textarea>',
+        unsafe_allow_html=True,
+    )
+    st.link_button("Open email", mailto_for(record), type="primary")
 
 
 def credentials_ok(email: str, password: str) -> bool:
@@ -424,11 +551,81 @@ def inject_css() -> None:
             }
 
             .booking {
-                margin: 0 0 28px;
+                margin: 0;
+                padding: 22px 0 4px;
+                border-top: 1px solid #eeeeee;
             }
 
-            .booking dl {
+            .booking dl,
+            .confirm-details {
                 margin: 0;
+            }
+
+            .booking-status {
+                margin: 0 0 2px;
+                font-size: 12px;
+                font-weight: 500;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+            }
+
+            .booking-status.is-pending {
+                color: #a8a8a8;
+            }
+
+            .booking-status.is-accepted {
+                color: #3d5636;
+            }
+
+            .confirm-label {
+                margin: 32px 0 8px;
+                font-size: 12px;
+                font-weight: 500;
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+                color: #a8a8a8;
+            }
+
+            .confirm-note {
+                margin: 0 0 16px;
+                max-width: 46ch;
+                font-size: 15px;
+                line-height: 1.55;
+                color: #555555;
+            }
+
+            .email-subject {
+                margin: 0 0 10px;
+                font-size: 16px;
+                line-height: 1.45;
+                color: #2a2a2a;
+            }
+
+            .email-subject span {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 12px;
+                font-weight: 500;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #a8a8a8;
+            }
+
+            textarea.email-copy {
+                display: block;
+                width: 100%;
+                box-sizing: border-box;
+                min-height: 380px;
+                margin: 0 0 8px;
+                padding: 16px 18px;
+                border: none;
+                border-radius: 2px;
+                background: #f6f6f4;
+                resize: vertical;
+                font-family: "Manrope", "Helvetica Neue", Helvetica, Arial, sans-serif;
+                font-size: 15px;
+                line-height: 1.55;
+                color: #2a2a2a;
             }
 
             div[data-testid="stForm"] {
@@ -487,7 +684,8 @@ def inject_css() -> None:
             }
 
             [data-testid="stFormSubmitButton"] button,
-            [data-testid="stBaseButton-primary"] {
+            [data-testid="stBaseButton-primary"],
+            [data-testid="stBaseLinkButton-primary"] {
                 margin-top: 8px;
                 padding: 0.65rem 1.35rem;
                 border: none !important;
@@ -496,15 +694,18 @@ def inject_css() -> None:
                 color: #ffffff !important;
                 font-weight: 500;
                 letter-spacing: 0.04em;
+                text-decoration: none !important;
             }
 
             [data-testid="stFormSubmitButton"] button p,
-            [data-testid="stBaseButton-primary"] p {
+            [data-testid="stBaseButton-primary"] p,
+            [data-testid="stBaseLinkButton-primary"] p {
                 color: #ffffff !important;
             }
 
             [data-testid="stFormSubmitButton"] button:hover,
-            [data-testid="stBaseButton-primary"]:hover {
+            [data-testid="stBaseButton-primary"]:hover,
+            [data-testid="stBaseLinkButton-primary"]:hover {
                 border: none !important;
                 background: #2e424e !important;
                 color: #ffffff !important;
@@ -774,7 +975,7 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
     signed_in = bool(st.session_state.admin)
     if signed_in:
         heading = "Appointments"
-        tagline = "Every saved booking, including contact details."
+        tagline = "Accept a request to hold that time on the public calendar."
     else:
         heading = "Sign in"
         tagline = "This page is separate from the public site. Visitors never see this list."
@@ -806,11 +1007,20 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
 
     if st.button("Sign out", type="tertiary", key="sign-out"):
         st.session_state.admin = False
+        st.session_state.accept_notice = None
+        st.session_state.accept_error = None
         st.rerun()
 
     if store_error:
         render_message("error", store_error)
         return
+
+    notice = st.session_state.get("accept_notice")
+    accept_error = st.session_state.get("accept_error")
+    if isinstance(notice, dict):
+        render_acceptance(notice)
+    if accept_error:
+        render_message("error", str(accept_error))
 
     count = len(bookings)
     if count == 0:
@@ -819,12 +1029,34 @@ def render_staff(bookings: list[dict], store_error: str | None) -> None:
             unsafe_allow_html=True,
         )
         return
+    pending = sum(1 for item in bookings if booking_status(item) == "pending")
     noun = "booking" if count == 1 else "bookings"
+    waiting = ""
+    if pending:
+        request_noun = "request" if pending == 1 else "requests"
+        waiting = f" {pending} {request_noun} waiting to be accepted."
     st.markdown(
-        f'<p class="section-note">{count} {noun} on file.</p>',
+        f'<p class="section-note">{count} {noun} on file.{waiting}</p>',
         unsafe_allow_html=True,
     )
-    st.markdown(appointments_markup(bookings), unsafe_allow_html=True)
+    for record in sorted(bookings, key=booking_sort_key):
+        st.markdown(booking_card(record), unsafe_allow_html=True)
+        if booking_status(record) != "pending":
+            continue
+        booking_id = str(record.get("id") or "")
+        if not booking_id:
+            continue
+        if st.button("Accept", type="primary", key=f"accept-{booking_id}"):
+            try:
+                st.session_state.accept_notice = accept_booking(booking_id)
+                st.session_state.accept_error = None
+            except SlotTaken:
+                st.session_state.accept_error = (
+                    "That time is already accepted for another booking."
+                )
+            except BookingStoreError:
+                st.session_state.accept_error = "That booking could not be saved."
+            st.rerun()
 
 
 def main() -> None:
@@ -836,6 +1068,8 @@ def main() -> None:
     inject_css()
     st.session_state.setdefault("admin", False)
     st.session_state.setdefault("form_gen", 0)
+    st.session_state.setdefault("accept_notice", None)
+    st.session_state.setdefault("accept_error", None)
 
     today = date.today()
     try:
