@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProWash &amp; Detail Co.</title>
+  <meta name="description" content="Mobile detailing and power washing by ProWash & Detail Co. Car detailing, power washing, solar panel cleaning, and trash can cleaning.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="wordmark" href="#top">ProWash &amp; Detail Co.</a>
+      <a class="header-link" href="#book">Book a Service</a>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Mobile detailing and power washing</p>
+        <h1>ProWash &amp; Detail Co.</h1>
+        <p class="lede">A careful, unhurried clean for your vehicle, home, and property.</p>
+        <a class="button" href="#book">Book a Service</a>
+      </div>
+    </section>
+
+    <section class="services" id="services" aria-labelledby="services-heading">
+      <div class="wrap">
+        <h2 id="services-heading">Services</h2>
+        <ul class="service-list">
+          <li class="service">
+            <h3>Car Detailing</h3>
+            <p>Interior and exterior care that restores the finish, protects the paint, and leaves the cabin immaculate.</p>
+          </li>
+          <li class="service">
+            <h3>Power Washing</h3>
+            <p>Driveways, patios, siding, and storefronts cleaned with controlled pressure and a light touch.</p>
+          </li>
+          <li class="service">
+            <h3>Solar Panel Cleaning</h3>
+            <p>Gentle washing that clears dust and debris so your panels can perform as they should.</p>
+          </li>
+          <li class="service">
+            <h3>Trash Can Cleaning</h3>
+            <p>Bins sanitized inside and out, so the curb looks as considered as the rest of the property.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="booking" id="book" aria-labelledby="book-heading">
+      <div class="wrap">
+        <h2 id="book-heading">Book a Service</h2>
+        <p class="section-intro">Share a few details and we’ll confirm a time by phone or email.</p>
+        <form id="booking-form">
+          <div class="field">
+            <label for="name">Name</label>
+            <input id="name" name="name" type="text" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input id="phone" name="phone" type="tel" autocomplete="tel" required>
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="address">Address</label>
+            <input id="address" name="address" type="text" autocomplete="street-address" required>
+          </div>
+          <div class="field">
+            <label for="service">Service</label>
+            <select id="service" name="service" required>
+              <option value="" disabled selected>Select a service</option>
+              <option>Car Detailing</option>
+              <option>Power Washing</option>
+              <option>Solar Panel Cleaning</option>
+              <option>Trash Can Cleaning</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="date">Preferred date</label>
+            <input id="date" name="date" type="date" required>
+          </div>
+          <div class="field field-full">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="4" placeholder="Gate code, vehicle, or anything we should know"></textarea>
+          </div>
+          <div class="field field-full form-actions">
+            <button class="button" type="submit">Book a Service</button>
+            <p id="form-note" class="form-note" hidden>Your email app will open with this request. If it doesn’t, call (925) 915-6541.</p>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="contact" id="contact" aria-labelledby="contact-heading">
+      <div class="wrap">
+        <h2 id="contact-heading">Contact</h2>
+        <dl class="contact-list">
+          <div>
+            <dt>Phone</dt>
+            <dd><a href="tel:+19259156541">(925) 915-6541</a></dd>
+          </div>
+          <div>
+            <dt>Instagram</dt>
+            <dd><a href="https://instagram.com/prowash.detail.co" rel="noopener noreferrer">@prowash.detail.co</a></dd>
+          </div>
+          <div>
+            <dt>Email</dt>
+            <dd><a href="mailto:hello@prowashdetail.co">hello@prowashdetail.co</a></dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p>ProWash &amp; Detail Co.</p>
+      <p>Mobile detailing and power washing</p>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("booking-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      var data = new FormData(event.currentTarget);
+      var notes = data.get("notes");
+      var body = [
+        "Name: " + data.get("name"),
+        "Phone: " + data.get("phone"),
+        "Email: " + data.get("email"),
+        "Address: " + data.get("address"),
+        "Service: " + data.get("service"),
+        "Preferred date: " + data.get("date"),
+        "Notes: " + (notes ? notes : "None")
+      ].join("\n");
+      document.getElementById("form-note").hidden = false;
+      window.location.href = "mailto:hello@prowashdetail.co?subject="
+        + encodeURIComponent("Service request — ProWash & Detail Co.")
+        + "&body=" + encodeURIComponent(body);
+    });
+  </script>
+</body>
+</html>
