@@ -1,14 +1,50 @@
-[
-  {
-    "name": "chase",
-    "phone": "9259156541",
-    "email": "chasejrose5@gmail.com",
-    "address": "1463 paseo nogales rd",
-    "service": "Car Detailing",
-    "date": "2026-11-04",
-    "time": "10:00 AM",
-    "notes": "",
-    "id": "2af5b27e6847483096b5397f1776f757",
-    "status": "accepted"
-  }
-]
+{
+  "bookings": [
+    {
+      "name": "chase",
+      "phone": "9259156541",
+      "email": "chasejrose5@gmail.com",
+      "address": "1463 paseo nogales rd",
+      "service": "Car Detailing",
+      "date": "2026-11-04",
+      "time": "10:00 AM",
+      "notes": "",
+      "id": "2af5b27e6847483096b5397f1776f757",
+      "status": "completed",
+      "claimed_by": "Luke",
+      "customer_confirmed": true,
+      "completed": true
+    },
+    {
+      "name": "casasasasadasdasdaddaaasas",
+      "phone": "9259156541",
+      "email": "chasejrose5@gmail.com",
+      "address": "1463 paseo nogales rd",
+      "service": "Power Washing",
+      "date": "2026-11-03",
+      "time": "10:00 AM",
+      "notes": "",
+      "id": "eb3936a79688402eb6d91b6a52534d3a",
+      "status": "completed",
+      "claimed_by": "Mason",
+      "customer_confirmed": true,
+      "completed": true
+    },
+    {
+      "name": "dadaddad",
+      "phone": "9259156541",
+      "email": "chasejrose5@gmail.com",
+      "address": "1463 paseo nogales rd",
+      "service": "Power Washing",
+      "date": "2026-11-08",
+      "time": "10:00 AM",
+      "notes": "",
+      "id": "8dfa4f16d20944b99a88527abb913146",
+      "status": "completed",
+      "claimed_by": "Mason",
+      "completed": true,
+      "customer_confirmed": true
+    }
+  ],
+  "blackouts": []
+}
